@@ -3,7 +3,8 @@ lapply(c("quantmod", "timeSeries", "MuMIn", "moexer", "rvest"), require,
 
 options(na.action = "na.fail") 
 
-rus.regression <- function(x){ # regression models and fair prices for stocks
+# regression models and fair prices for stocks
+rus.regression3 <- function(x, dataframe=F){ 
   
   redom = list(
     c("AGRO", "RAGR"), c("CIAN", "CNRU"), c("HHRU", "HEAD"), c("FIVE", "X5"),
@@ -69,7 +70,7 @@ rus.regression <- function(x){ # regression models and fair prices for stocks
     
     if (x[n] == "BELU"){ j <- which(rownames(R) == "2024-08-15")
     
-      R[c(1:j),] <- R[c(1:j),]/8 } # Adjustments for Novabev stock
+    R[c(1:j),] <- R[c(1:j),]/8 } # Adjustments for Novabev stock
     
     if (is.null(J)) J <- list(R) else J[[n]] <- R 
     R <- NULL  # Reset R for next iteration
@@ -90,8 +91,8 @@ rus.regression <- function(x){ # regression models and fair prices for stocks
         A, which(y == A), length(y)
       )
     )
-  }
-  
+    }
+    
   message("Commodities data has been downloaded successfully")
   
   if (isTRUE(grepl("-", y))){ y <- gsub("-", "", y) }
@@ -144,9 +145,65 @@ rus.regression <- function(x){ # regression models and fair prices for stocks
   
   message("Interest Rate data has been downloaded successfully")
   
+  rouble.yahoo <- function(){
+    
+    p <- read_html("https://finance.yahoo.com/quote/RUB=X/") %>%
+      html_nodes('section') %>% html_nodes('div') %>% html_nodes('span') %>% 
+      html_text() %>% .[1]
+    
+    as.numeric(gsub(" ", "", p))
+  }
+  rouble_df <- rouble.yahoo()
+  
+  message("Rouble data has been downloaded successfully")
+  
+  commodities.yahoo2 <- function(){ # Data Frame with Commodity values
+    
+    p1 <- read_html("https://finance.yahoo.com/commodities/") %>% 
+      html_nodes('table') %>% html_nodes('tr') %>% html_nodes('td') %>% 
+      html_nodes('div') # Read HTML
+    
+    p <- p1 %>% html_nodes('span') %>% html_text() # Extract names 
+    
+    v <- as.numeric(gsub(",", "", p[seq(from = 3, to = length(p), by = 3)]))
+    
+    tickers <- gsub(" ", "", p[seq(from = 1, to = length(p), by = 3)]) #Tickers
+    
+    names(v) <- tickers
+    
+    v <- v[paste(c(
+          "BZ", "HG", "GC", "SB", "CT", "KC", "CC", "HE", "ZS","ZR"
+          ), "=F", sep = "")]
+    
+    v["ZR=F"] = v["ZR=F"] * 100
+    
+    v <- c(v, as.numeric(rouble_df), as.numeric(cbr[nrow(cbr),]))
+    
+    df <- as.data.frame(v) # merge names with values
+    
+    rownames(df) <- c(
+      "Brent", "Copper", "Gold", "Sugar", "Cotton", "Coffee", "Cocoa", "Hogs", 
+      "Soybeans", "Rice", "Dollar", "Rate")
+    
+    colnames(df) <- c("Points") # Column names
+    
+    for (n in 1:ncol(df)){ df[,n] <- as.numeric(df[,n]) } # Make data numeric
+    
+    df
+  }
+  commodities_df <- commodities.yahoo2() # Test
+  
+  message("Live commodity data has been downloaded successfully")
+  
   a <- as.timeSeries(cbind(a, cbr)) # Make it time series and display
   
   a <- a[apply(a, 1, function(x) all(!is.na(x))),] # Get rid of NA
+  
+  names_factors <- c(
+    "Brent", "Copper", "Gold", "Sugar", "Cotton", "Coffee", "Cocoa", "Hogs", 
+    "Soybeans", "Rice", "Dollar", "Rate")
+  
+  names_factors <- sort(names_factors)
   
   reg <- NULL
   df <- NULL
@@ -161,22 +218,22 @@ rus.regression <- function(x){ # regression models and fair prices for stocks
     
     for (n in 1:ncol(p)){ if (isTRUE(is.numeric(p[,n]))){ l <- c(l, n) } }
     
-        d <- p[,l] # Write a full regression model with all possible variables
+    d <- p[,l] # Write a full regression model with all possible variables
+    
+    for (n in 2:(ncol(d))){ if (isTRUE(n == 2)){ f1 <- colnames(d)[1]
+    
+        s1 <- colnames(d)[2] # formulae of regression with all variables
         
-        for (n in 2:(ncol(d))){ if (isTRUE(n == 2)){ f1 <- colnames(d)[1]
+        if (isTRUE(grepl(" ", f1))){ f1 <- sprintf("`%s`", f1) }
         
-            s1 <- colnames(d)[2] # formulae of regression with all variables
-            
-            if (isTRUE(grepl(" ", f1))){ f1 <- sprintf("`%s`", f1) }
-            
-            if (isTRUE(grepl(" ", s1))){ s1 <- sprintf("`%s`", s1) }
-            
-            L <- sprintf("%s ~ %s", f1, s1) } else { h1 <- colnames(d)[n]
-            
-            if (isTRUE(grepl(" ", h1))){ h1 <- sprintf("`%s`", h1) }
-            
-            L <- sprintf("%s + %s", L, h1) } } # Join all variables
-            
+        if (isTRUE(grepl(" ", s1))){ s1 <- sprintf("`%s`", s1) }
+        
+        L <- sprintf("%s ~ %s", f1, s1) } else { h1 <- colnames(d)[n]
+        
+        if (isTRUE(grepl(" ", h1))){ h1 <- sprintf("`%s`", h1) }
+        
+        L <- sprintf("%s + %s", L, h1) } } # Join all variables
+        
     D <- as.data.frame(dredge(lm(L, d))[1,]) #Run all regressions & Select best
     
     D <- colnames(D[,apply(D,2,function(x) all(!is.na(x)))]) # Cut false values
@@ -187,10 +244,10 @@ rus.regression <- function(x){ # regression models and fair prices for stocks
     
     for (n in 1:length(D)){ if (isTRUE(n == 1)){
       
-      r <- sprintf("%s ~ %s",f1,D[1]) } else {
-        
-        r <- sprintf("%s + %s",r,D[n]) } }
-    
+        r <- sprintf("%s ~ %s",f1,D[1]) } else {
+          
+          r <- sprintf("%s + %s",r,D[n]) } }
+      
     R <- summary(lm(r, d)) # Display the most optimal regression model
     
     S <- as.data.frame(R$coefficients[,1]) # Regression coefficients
@@ -199,15 +256,21 @@ rus.regression <- function(x){ # regression models and fair prices for stocks
     
     g <- S[1,] # Intercept Value
     
-    v <- as.data.frame(a[nrow(a),]) # Select last observation
+    if (dataframe){ # Last Observations from data frame
+      
+      v <- as.data.frame(a[nrow(a),]) # Select last observation
+      
+      v <- t(as.data.frame(v)) } # Transpose
+      
+    else { v <- commodities_df } # Values from current values
     
     S <- as.data.frame(S[-1,]) # Reduce first column
     
     rownames(S) <- r # Change row names to one without first row name
     
-    v <- t(as.data.frame(v)) # Transpose
-    
     v <- as.data.frame(v[order(row.names(v)), ]) # Order alphabetically
+    
+    rownames(v) <- names_factors
     
     v <- v[c(rownames(S)),]
     
@@ -225,7 +288,7 @@ rus.regression <- function(x){ # regression models and fair prices for stocks
     
     g <- cbind.data.frame(
       round(sum(l[,3]) + g, 2),
-      p[nrow(p), 1],
+      round(p[nrow(p), 1], 2),
       pot_return,
       nrow(p),
       round(R[[9]], 2)
@@ -247,7 +310,9 @@ rus.regression <- function(x){ # regression models and fair prices for stocks
   
   names(nested_list[[1]]) <- x # Assign tickers
   
-  names(nested_list) <- c("Regression", "Data Frame", "Date") # Names
+  names(nested_list) <- c(
+    "Regression", "Data Frame", "Last Date of Data Frame Observation"
+    ) # Names
   
   nested_list # Display
 }
