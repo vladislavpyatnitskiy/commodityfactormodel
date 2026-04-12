@@ -4,7 +4,7 @@ lapply(c("quantmod", "timeSeries", "MuMIn", "moexer", "rvest"), require,
 options(na.action = "na.fail") 
 
 # regression models and fair prices for stocks
-rus.regression3 <- function(x, dataframe=F){ 
+rus.regression <- function(x, dataframe=F){ 
   
   redom = list(
     c("AGRO", "RAGR"), c("CIAN", "CNRU"), c("HHRU", "HEAD"), c("FIVE", "X5"),
