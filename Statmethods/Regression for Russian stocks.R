@@ -76,9 +76,53 @@ rus.regression <- function(x, dataframe=F){
     R <- NULL  # Reset R for next iteration
   }
   
-  message("Stocks data has been downloaded successfully")
+  message("Stocks data has been downloaded successfully (1/6)")
   
-  y <- c(paste(c("BZ", "HG", "GC", "SB", "CT", "KC", "CC", "HE", "ZS",
+  smartlab.values <- function(x){ # Current prices for ticker from Smart-Lab
+    
+    # Retrieve data
+    f <- read_html("https://smart-lab.ru/q/shares/") %>% 
+      html_nodes('table') %>% html_nodes('tr') %>% html_nodes('td') 
+    
+    l <- NULL
+    
+    for (n in 1:length(f)){ # Derive ticker and price data
+      
+      if (
+        isTRUE(f[n] %>% html_attr('class') == "trades-table__ticker") |
+        isTRUE(f[n] %>% html_attr('class') == "trades-table__price")
+      ){
+        
+        l <- c(l, f[n] %>% html_text())
+      }
+    }
+    
+    D <- data.frame(
+      l[seq(from = 1, to = length(l), by = 2)],
+      l[seq(from = 2, to = length(l), by = 2)]
+    ) # organise into data frame
+    
+    colnames(D) <- c("Ticker", "Prices") # Assign column names
+    
+    ticker_names <- D[,1] # Assign tickers to new variable
+    
+    D <- subset(D, select = -c(1)) # Reduce excess column
+    
+    rownames(D) <- ticker_names # Assign tickers as row names
+    
+    for (n in 1:ncol(D)){ D[,n] <- round(as.numeric(D[,n]), 4) } # Numeric
+    
+    D <- D[x,] # Display
+    
+    names(D) <- x
+    
+    D
+  }
+  s_values <- smartlab.values(x)
+  
+  message("Current stocks data has been downloaded successfully (2/6)")
+  
+  y <- c(paste(c("BZ", "HG", "GC", "SB", "CT", "KC", "CC", "LE", "ZS",
                  "ZR"), "=F", sep = ""), "RUB=X") # tickers 
   
   p <- NULL # 4 scenarios: no dates, only start or end dates, both dates
@@ -93,13 +137,13 @@ rus.regression <- function(x, dataframe=F){
     )
     }
     
-  message("Commodities data has been downloaded successfully")
+  message("Commodities data has been downloaded successfully (3/6)")
   
   if (isTRUE(grepl("-", y))){ y <- gsub("-", "", y) }
   if (isTRUE(grepl("=", y))){ y <- gsub("=", "", y) }
   
   colnames(p) <- c("Brent", "Copper", "Gold", "Sugar", "Cotton",
-                   "Coffee", "Cocoa", "Hogs", "Soybeans", "Rice", "Dollar")
+                   "Coffee", "Cocoa", "Cattle", "Soybeans", "Rice", "Dollar")
   
   a <- as.timeSeries(p) # Make it time series and display
   
@@ -143,7 +187,7 @@ rus.regression <- function(x, dataframe=F){
   
   cbr = cir("17.09.2013", as.Date(Sys.Date())) # Interest Rate Data
   
-  message("Interest Rate data has been downloaded successfully")
+  message("Interest Rate data has been downloaded successfully (4/6)")
   
   rouble.yahoo <- function(){
     
@@ -155,7 +199,7 @@ rus.regression <- function(x, dataframe=F){
   }
   rouble_df <- rouble.yahoo()
   
-  message("Rouble data has been downloaded successfully")
+  message("Rouble data has been downloaded successfully (5/6)")
   
   commodities.yahoo2 <- function(){ # Data Frame with Commodity values
     
@@ -172,7 +216,7 @@ rus.regression <- function(x, dataframe=F){
     names(v) <- tickers
     
     v <- v[paste(c(
-          "BZ", "HG", "GC", "SB", "CT", "KC", "CC", "HE", "ZS","ZR"
+          "BZ", "HG", "GC", "SB", "CT", "KC", "CC", "LE", "ZS","ZR"
           ), "=F", sep = "")]
     
     v["ZR=F"] = v["ZR=F"] * 100
@@ -182,8 +226,8 @@ rus.regression <- function(x, dataframe=F){
     df <- as.data.frame(v) # merge names with values
     
     rownames(df) <- c(
-      "Brent", "Copper", "Gold", "Sugar", "Cotton", "Coffee", "Cocoa", "Hogs", 
-      "Soybeans", "Rice", "Dollar", "Rate")
+      "Brent", "Copper", "Gold", "Sugar", "Cotton", "Coffee", "Cocoa", 
+      "Cattle", "Soybeans", "Rice", "Dollar", "Rate")
     
     colnames(df) <- c("Points") # Column names
     
@@ -193,14 +237,14 @@ rus.regression <- function(x, dataframe=F){
   }
   commodities_df <- commodities.yahoo2() # Test
   
-  message("Live commodity data has been downloaded successfully")
+  message("Live commodity data has been downloaded successfully (6/6)")
   
   a <- as.timeSeries(cbind(a, cbr)) # Make it time series and display
   
   a <- a[apply(a, 1, function(x) all(!is.na(x))),] # Get rid of NA
   
   names_factors <- c(
-    "Brent", "Copper", "Gold", "Sugar", "Cotton", "Coffee", "Cocoa", "Hogs", 
+    "Brent", "Copper", "Gold", "Sugar", "Cotton", "Coffee", "Cocoa", "Cattle", 
     "Soybeans", "Rice", "Dollar", "Rate")
   
   names_factors <- sort(names_factors)
@@ -282,13 +326,19 @@ rus.regression <- function(x, dataframe=F){
     
     l$var <- l[,1] * l[,2] # Sum Product of two columns
     
-    pot_return = round(log(round(sum(l[,3]) + g, 2) / p[nrow(p), 1]), 4) * 100
+    s_v <- s_values[i]
+    
+    pot_return = round(
+      log(
+        (sum(l[,3]) + g) / s_v
+        ), 4
+      ) * 100
     
     if (is.null(reg)){ reg <- list(R) } else { reg[[i]] <- R } 
     
     g <- cbind.data.frame(
-      round(sum(l[,3]) + g, 2),
-      round(p[nrow(p), 1], 2),
+      round(sum(l[,3]) + g, 4),
+      s_values[i],
       pot_return,
       nrow(p),
       round(R[[9]], 2)
