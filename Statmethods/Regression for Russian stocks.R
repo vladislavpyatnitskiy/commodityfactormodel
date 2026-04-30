@@ -41,6 +41,7 @@ rus.regression <- function(x, dataframe=F){
         a <- xts(a[, 1], order.by = as.Date(a[, 2]))
         
         if (x[n] == "AGRO") a <- a / 7.01
+        if (x[n] == "FIXP") a <- a / 100     
         
         colnames(a) <- redom[[f]][2]
         
